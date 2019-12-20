@@ -98,4 +98,3 @@ rule generate_meta_files_bams:
             params.command, params.root_dir, input.filepaths, output,
             template = params.template, metadata = params.metadata
             )
-

@@ -1,3 +1,6 @@
+import os
+from single_cell.workflows.align.dtypes import dtypes
+
 rule get_duplication_wgs_flagstat_metrics:
     input:
         input_bam = os.path.join(bams_dir, '{cell_id}.bam')

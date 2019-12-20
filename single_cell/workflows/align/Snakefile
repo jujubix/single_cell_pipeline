@@ -1,8 +1,5 @@
 import os
-import re
-import sys
 from single_cell.workflows.align.dtypes import dtypes
-from single_cell.utils import inpututils
 
 include: "metrics_subworkflow.smk"
 
@@ -112,12 +109,3 @@ rule tar_all_files:
         ncpus = 1
     run:
         single_cell.utils.helpers.tar_files(input, output.tar_output, tempdir)
-
-
-
-
-
-
-
-
-
