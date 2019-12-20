@@ -2,7 +2,6 @@ import os
 import re
 import sys
 from single_cell.utils import inpututils
-from single_cell.workflows import align
 
 def get_output_files(outdir, lib):
     data = {
@@ -44,7 +43,7 @@ baseimage = alignment_config.get('docker', {}).get('single_cell_pipeline', None)
 chromosomes = alignment_config["chromosomes"]
 ref_genome = alignment_config['ref_genome']
 
-include: "align/Snakefile"
+include: "workflows/align/Snakefile"
 
 rule all:
     input:
@@ -53,14 +52,14 @@ rule all:
         gc_metrics_csv = alignment_files['gc_metrics_csv'],
         fastqc_metrics_csv = alignment_files['fastqc_metrics_csv'],
         plot_metrics_output = alignment_files['plot_metrics_output'],
-        alignment_meta,
-        bams_meta
+        alignment_meta = alignment_meta,
+        bams_meta = bams_meta
 
 rule generate_meta_files_results:
     params:
         command = sys.argv[0:],
         root_dir = alignment_dir,
-        input_yaml_data = inpututils.load_yaml(args['input_yaml']),
+        input_yaml_data = inpututils.load_yaml(config['input_yaml']),
         input_yaml = input_yaml_blob,
         metadata = {
                 'library_id': lib,
@@ -75,7 +74,7 @@ rule generate_meta_files_results:
     run:
         single_cell.utils.helpers.generate_and_upload_metadata(
             params.command, params.root_dir, input.filepaths, output,
-            input_yaml_data = paramsinput_yaml_data, input_yaml = params.input_yaml,
+            input_yaml_data = params.input_yaml_data, input_yaml = params.input_yaml,
             metadata = params.metadata
             )
 

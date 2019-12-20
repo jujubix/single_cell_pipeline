@@ -1,8 +1,52 @@
 import os
 import re
 import sys
-from single_cell.workflows.align.dtypes import dtypes
+# from single_cell.workflows.align.dtypes import dtypes
 from single_cell.utils import inpututils
+
+def dtypes():
+    metrics = {
+        'cell_id': 'str',
+        'total_mapped_reads': 'Int64',
+        'library_id': 'str',
+        'unpaired_mapped_reads': 'Int64',
+        'paired_mapped_reads': 'Int64',
+        'unpaired_duplicate_reads': 'Int64',
+        'paired_duplicate_reads': 'Int64',
+        'unmapped_reads': 'Int64',
+        'percent_duplicate_reads': 'float64',
+        'estimated_library_size': 'Int64',
+        'total_reads': 'Int64',
+        'total_duplicate_reads': 'Int64',
+        'total_properly_paired': 'Int64',
+        'coverage_breadth': 'float64',
+        'coverage_depth': 'float64',
+        'median_insert_size': 'float64',
+        'mean_insert_size': 'float64',
+        'standard_deviation_insert_size': 'float64',
+        'cell_call': 'str',
+        'column': 'Int64',
+        'experimental_condition': 'str',
+        'img_col': 'Int64',
+        'index_i5': 'str',
+        'index_i7': 'str',
+        'primer_i5': 'str',
+        'primer_i7': 'str',
+        'row': 'Int64',
+        'sample_type': 'str',
+        'fastqscreen_grch37': 'Int64',
+        'fastqscreen_salmon': 'Int64',
+        'fastqscreen_grch37_multihit': 'Int64',
+        'fastqscreen_salmon_multihit': 'Int64',
+        'fastqscreen_mm10': 'Int64',
+        'fastqscreen_nohit': 'Int64',
+        'fastqscreen_mm10_multihit': 'Int64',
+        'is_contaminated': 'bool'
+    }
+    dtypes = locals()
+
+    return dtypes
+
 
 def get_output_files(outdir, lib):
     data = {
@@ -27,6 +71,7 @@ laneinfo = inpututils.get_lane_info(config['input_yaml'])
 
 cellids = inpututils.get_samples(config['input_yaml'])
 fastq1_files, fastq2_files = inpututils.get_fastqs(config['input_yaml'])
+print(fastq1_files)
 
 alignment_files = get_output_files(alignment_dir, lib)
 alignment_meta = os.path.join(alignment_dir, 'metadata.yaml')
@@ -34,8 +79,8 @@ alignment_meta = os.path.join(alignment_dir, 'metadata.yaml')
 bam_files_template = os.path.join(bams_dir, '{cell_id}.bam')
 bams_meta = os.path.join(bams_dir, 'metadata.yaml')
 
-lane = sorted(set([v[1] for v in fastq1_files.keys()]))
-cell_id = sorted(set([v[0] for v in fastq1_files.keys()]))
+lanes = sorted(set([v[1] for v in fastq1_files.keys()]))
+cell = sorted(set([v[0] for v in fastq1_files.keys()]))
 
 input_yaml_blob = os.path.join(alignment_dir, 'input.yaml')
 
@@ -47,11 +92,11 @@ basename = alignment_config['docker']['single_cell_pipeline']
 
 rule align_reads:
     input:
-        fastq1 = lambda wildcards: fastq1_files[(wildcards.cell_id, wildcards.lane)],
-        fastq2 = lambda wildcards: fastq2_files[(wildcards.cell_id, wildcards.lane)]
+        fastq1 = lambda wildcards: list([fastq1_files[(wildcards.cell_id, lane)] for lane in lanes]),
+        fastq2 = lambda wildcards: list([fastq2_files[(wildcards.cell_id, lane)] for lane in lanes])
     params:
-        laneinfo = lambda wildcards: laneinfo[(wildcards.cell_id, wildcards.lane)],
-        sampleinfo = lambda wildcards: sampleinfo[wildcards.cell_id]
+        laneinfo = lambda wildcards: list([laneinfo[(wildcards.cell_id, lane)] for lane in lanes]),
+        sampleinfo = lambda wildcards: sampleinfo[wildcards.cell_id],
         ref_genome = ref_genome,
         aligner = alignment_config['aligner'],
         containers = alignment_config['docker'],
@@ -161,7 +206,7 @@ rule collect_metrics:
         insert_metrics = expand('{cell_id}_insert_metrics.txt', cell_id = cell_id),
         wgs_metrics = expand('{cell_id}_wgs_metrics.txt', cell_id = cell_id)
     output:
-        tempdir = temp(directory("tempdir_collect_metrics"))
+        tempdir = temp(directory("tempdir_collect_metrics")),
         merged_metrics = temp("alignment_metrics.csv.gz"),
         merged_metrics_yaml = temp("alignment_metrics.csv.gz.yaml")
     resources:
@@ -235,6 +280,25 @@ rule add_contamination_status:
         )
 
 rule plot_metrics:
+    input:
+        alignment_metrics = alignment_files['alignment_metrics_csv'],
+        gc_metrics = alignment_files['gc_metrics_csv']
+    params:
+        alignment_config['gc_windows']
+    output:
+        alignment_files['plot_metrics_output']
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.workflows.align.tasks.plot_metrics(
+            input.alignment_metrics,
+            output,
+            'QC pipeline metrics',
+            input.gc_metrics,
+            params)
+
+rule tar_all_files:
     input:
         expand('{cell_id}_fastqc_reports.tar.gz', cell_id = cell_id),
         expand('{cell_id}_markdups_metrics.txt', cell_id = cell_id),

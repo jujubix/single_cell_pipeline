@@ -1,0 +1,6 @@
+config_file: /shahlab/pye/projects/single_cell_pipeline/config.yaml
+input_yaml: /shahlab/pye/projects/single_cell_pipeline/docs/INSTALL/input.yaml
+
+library_id: test
+out_dir: /shahlab/pye/projects/single_cell_pipeline/test_snakemake
+bams_dir: /shahlab/pye/projects/single_cell_pipeline/test_snakemake/bams_dir
