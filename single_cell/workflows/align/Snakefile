@@ -1,0 +1,264 @@
+import os
+import re
+import sys
+from single_cell.workflows.align.dtypes import dtypes
+from single_cell.utils import inpututils
+
+def get_output_files(outdir, lib):
+    data = {
+        'alignment_metrics_csv': os.path.join(outdir, '{}_alignment_metrics.csv.gz'.format(lib)),
+        'gc_metrics_csv': os.path.join(outdir, '{}_gc_metrics.csv.gz'.format(lib)),
+        'fastqc_metrics_csv': os.path.join(outdir, '{}_detailed_fastqscreen_metrics.csv.gz'.format(lib)),
+        'plot_metrics_output': os.path.join(outdir, '{}_alignment_metrics.pdf'.format(lib)),
+        'alignment_metrics_tar': os.path.join(outdir, '{}_alignment_metrics.tar.gz'.format(lib)),
+    }
+
+    return data
+
+alignment_config = inpututils.load_config(config)
+alignment_config = alignment_config['alignment']
+
+lib = config["library_id"]
+alignment_dir = config["out_dir"]
+bams_dir = config["bams_dir"]
+
+sampleinfo = inpututils.get_sample_info(config['input_yaml'])
+laneinfo = inpututils.get_lane_info(config['input_yaml'])
+
+cellids = inpututils.get_samples(config['input_yaml'])
+fastq1_files, fastq2_files = inpututils.get_fastqs(config['input_yaml'])
+
+alignment_files = get_output_files(alignment_dir, lib)
+alignment_meta = os.path.join(alignment_dir, 'metadata.yaml')
+
+bam_files_template = os.path.join(bams_dir, '{cell_id}.bam')
+bams_meta = os.path.join(bams_dir, 'metadata.yaml')
+
+lane = sorted(set([v[1] for v in fastq1_files.keys()]))
+cell_id = sorted(set([v[0] for v in fastq1_files.keys()]))
+
+input_yaml_blob = os.path.join(alignment_dir, 'input.yaml')
+
+chromosomes = alignment_config["chromosomes"]
+ref_genome = alignment_config['ref_genome']
+
+basename = alignment_config['docker']['single_cell_pipeline']
+# singularity: basename
+
+rule align_reads:
+    input:
+        fastq1 = lambda wildcards: fastq1_files[(wildcards.cell_id, wildcards.lane)],
+        fastq2 = lambda wildcards: fastq2_files[(wildcards.cell_id, wildcards.lane)]
+    params:
+        laneinfo = lambda wildcards: laneinfo[(wildcards.cell_id, wildcards.lane)],
+        sampleinfo = lambda wildcards: sampleinfo[wildcards.cell_id]
+        ref_genome = ref_genome,
+        aligner = alignment_config['aligner'],
+        containers = alignment_config['docker'],
+        adapter = alignment_config['adapter'],
+        adapter2 = alignment_config['adapter2'],
+        fastq_screen_params = alignment_config['fastq_screen_params'],
+    output:
+        sorted_markdups = os.path.join(bams_dir, '{cell_id}.bam'),
+        sorted_markdups_bai = os.path.join(bams_dir, '{cell_id}.bam.bai'),
+        tempdir = temp(directory('{cell_id}_alignment_temp')),
+        reports = temp('{cell_id}_fastqc_reports.tar.gz'),
+        fastqscreen_detailed_metrics = temp('{cell_id}_organism_detailed_count_per_cell.csv'),
+        fastqscreen_summary_metrics = temp('{cell_id}_organism_summary_count_per_cell.csv')
+    resources:
+        mem = 7,
+        ncpus = 1
+    run:
+        single_cell.workflows.align.align_tasks.align_lanes(
+            input.fastq1, input.fastq2, output.sorted_markdups, output.reports,
+            output.tempdir, params.ref_genome, params.laneinfo,
+            params.sampleinfo, wildcards.cell_id, lib, paramsaligner,
+            params.containers, params.adapter, params.adapter2,
+            output.fastqscreen_detailed_metrics, output.fastqscreen_summary_metrics,
+            params.fastq_screen_params
+            )
+
+rule merge_fastq_screen_metrics:
+    input:
+        all_detailed_counts = expand('{cell_id}_organism_detailed_count_per_cell.csv', cell_id = cell_id),
+        all_summary_counts = expand('{cell_id}_organism_summary_count_per_cell.csv', cell_id = cell_id)
+    output:
+        merged_detailed_counts = alignment_files['fastqc_metrics_csv'],
+        merged_detailed_counts_yaml = '{}.yaml'.format(alignment_files['fastqc_metrics_csv']),
+        merged_summary_counts = temp('organism_summary_count_per_cell.csv')
+    resources:
+        mem = 7,
+        ncpus = 1
+    run:
+        single_cell.workflows.align.fastqscreen.merge_fastq_screen_counts(
+            input.all_detailed_counts, input.all_summary_counts,
+            output.merged_detailed_counts, output.merged_summary_counts
+            )
+
+rule get_duplication_wgs_flagstat_metrics:
+    input:
+        input_bam = os.path.join(bams_dir, '{cell_id}.bam')
+    params:
+        ref_genome = ref_genome,
+        picard_wgs_params = alignment_config['picard_wgs_params'],
+        picard_docker = alignment_config.get('docker', {}).get('picard', None)
+    output:
+        markdups_bam = temp('{cell_id}_temp_markdup_bam.bam'),
+        markdups_metrics = temp('{cell_id}_markdups_metrics.txt'),
+        tempdir = temp(directory('{cell_id}_tempdir_markdups')),
+        wgs_metrics = temp('{cell_id}_wgs_metrics.txt')
+    run:
+        single_cell.workflows.align.tasks.picard_wgs_dup(
+        input.input_bam, output.markdups_bam, output.markdups_metrics, output.tempdir,
+        params.ref_genome, output.wgs_metrics, params.picard_wgs_params,
+        params.picard_docker
+        )
+
+rule bam_collect_gc_insert_metrics:
+    input:
+        input_bam = os.path.join(bams_dir, '{cell_id}.bam'),
+    params:
+        ref_genome = ref_genome,
+        picard_docker = alignment_config.get('docker', {}).get('picard', None),
+        samtools_docker = alignment_config.get('docker', {}).get('samtools', None)
+    output:
+        gc_metrics = temp('{cell_id}_gc_metrics.txt'),
+        gc_metrics_summary = temp('{cell_id}_gc_metrics_summary.txt'),
+        gc_metrics_pdf = temp('{cell_id}_gc_metrics.pdf'),
+        tempdir = temp(directory('{cell_id}_gc_tempdir')),
+        flagstat_metrics = temp('{cell_id}_flagstat_metrics.txt'),
+        insert_metrics = temp('{cell_id}_insert_metrics.txt'),
+        insert_pdf = temp('{cell_id}_insert_metrics.pdf')
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.workflows.align.tasks.picard_insert_gc_flagstat(
+        input.input_bam, params.ref_genome, output.gc_metrics,
+        output.gc_metrics_summary, output.gc_metrics_pdf,
+        output.tempdir, output.flagstat_metrics, output.insert_metrics,
+        output.insert_pdf, params.picard_docker, params.samtools_docker
+        )
+
+rule collect_gc_metrics:
+    input:
+        expand('{cell_id}_gc_metrics.txt', cell_id = cell_id)
+    output:
+        outfile = alignment_files['gc_metrics_csv'],
+        outfile_yaml = '{}.yaml'.format(alignment_files['gc_metrics_csv']),
+        tempdir = temp(directory("temp_gc"))
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        input_dict = {cid: f'{cid}_gc_metrics.txt' for cid in cell_id}
+        single_cell.workflows.align.tasks.collect_gc(input_dict, output.outfile, output.tempdir)
+
+rule collect_metrics:
+    input:
+        flagstat_metrics = expand('{cell_id}_flagstat_metrics.txt', cell_id = cell_id),
+        markdups_metrics = expand('{cell_id}_markdups_metrics.txt', cell_id = cell_id),
+        insert_metrics = expand('{cell_id}_insert_metrics.txt', cell_id = cell_id),
+        wgs_metrics = expand('{cell_id}_wgs_metrics.txt', cell_id = cell_id)
+    output:
+        tempdir = temp(directory("tempdir_collect_metrics"))
+        merged_metrics = temp("alignment_metrics.csv.gz"),
+        merged_metrics_yaml = temp("alignment_metrics.csv.gz.yaml")
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        flagstat_metrics = {cid: f'{cid}_flagstat_metrics.txt' for cid in cell_id}
+        markdups_metrics = {cid: f'{cid}_markdups_metrics.txt' for cid in cell_id}
+        insert_metrics = {cid: f'{cid}_insert_metrics.txt' for cid in cell_id}
+        wgs_metrics = {cid: f'{cid}_wgs_metrics.txt' for cid in cell_id}
+        single_cell.workflows.align.tasks.collect_metrics(
+            flagstat_metrics, markdups_metrics, insert_metrics,
+            wgs_metrics, output.tempdir, output.merged_metrics
+            )
+
+rule annotate_metrics:
+    input:
+        infile = "alignment_metrics.csv.gz"
+    params:
+        annotation_data = sampleinfo,
+        dtypes = dtypes()['metrics']
+    output:
+        outfile = temp('alignment_metrics_annotated.csv.gz'),
+        outfile_yaml = temp('alignment_metrics_annotated.csv.gz.yaml')
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.utils.csvutils.annotate_csv(
+            input.infile, params.annotation_data, output.outfile, dtypes=params.dtypes
+            )
+
+rule add_fastqscreen_metrics:
+    input:
+        in_filenames = [
+            'alignment_metrics_annotated.csv.gz',
+            'organism_summary_count_per_cell.csv'
+        ]
+    output:
+        out_filename = temp('alignment_metrics.csv'),
+        out_filename_yaml = temp('alignment_metrics.csv.yaml')
+    params:
+        how = 'outer',
+        on = ['cell_id'],
+        dtypes = dtypes()['metrics']
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.utils.csvutils.merge_csv(
+            input.in_filenames, output.out_filename,
+            params.how, params.on, dtypes=params.dtypes
+            )
+
+rule add_contamination_status:
+    input:
+        infile = 'alignment_metrics.csv',
+    output:
+        outfile = alignment_files['alignment_metrics_csv']
+    params:
+        reference = alignment_config.get('ref_type', 'grch37'),
+        strict_validation = alignment_config.get('fastq_screen_params', True)
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.workflows.align.tasks.add_contamination_status(
+        input.infile, output.outfile,
+        reference=params.reference,
+        strict_validation=params.strict_validation
+        )
+
+rule plot_metrics:
+    input:
+        expand('{cell_id}_fastqc_reports.tar.gz', cell_id = cell_id),
+        expand('{cell_id}_markdups_metrics.txt', cell_id = cell_id),
+        expand('{cell_id}_flagstat_metrics.txt', cell_id = cell_id),
+        expand('{cell_id}_wgs_metrics.txt', cell_id = cell_id),
+        expand('{cell_id}_gc_metrics.txt', cell_id = cell_id),
+        expand('{cell_id}_gc_metrics_summary.txt', cell_id = cell_id),
+        expand('{cell_id}_gc_metrics.pdf', cell_id = cell_id),
+        expand('{cell_id}_insert_metrics.txt', cell_id = cell_id),
+        expand('{cell_id}_insert_metrics.pdf', cell_id = cell_id)
+    output:
+        tar_output = alignment_files['alignment_metrics_tar'],
+        tempdir = temp(directory('merge_metrics_tar'))
+    resources:
+        mem = alignment_config.get('memory', {}).get('med', 6),
+        ncpus = 1
+    run:
+        single_cell.utils.helpers.tar_files(input, output.tar_output, tempdir)
+
+
+
+
+
+
+
+
+
