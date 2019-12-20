@@ -33,7 +33,7 @@ alignment_meta = os.path.join(alignment_dir, 'metadata.yaml')
 bam_files_template = os.path.join(bams_dir, '{cell_id}.bam')
 bams_meta = os.path.join(bams_dir, 'metadata.yaml')
 
-lane = sorted(set([v[1] for v in fastq1_files.keys()]))
+lanes = sorted(set([v[1] for v in fastq1_files.keys()]))
 cell_id = sorted(set([v[0] for v in fastq1_files.keys()]))
 
 input_yaml_blob = os.path.join(alignment_dir, 'input.yaml')
@@ -64,7 +64,7 @@ rule generate_meta_files_results:
         metadata = {
                 'library_id': lib,
                 'cell_ids': cell_id,
-                'lane_ids': lane,
+                'lane_ids': lanes,
                 'type': 'alignment'
             }
     input:
@@ -86,7 +86,7 @@ rule generate_meta_files_bams:
         metadata = {
                 'library_id': lib,
                 'cell_ids': cell_id,
-                'lane_ids': lane,
+                'lane_ids': lanes,
                 'type': 'cellbams'
             }
     input:

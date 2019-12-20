@@ -59,37 +59,6 @@ def get_output_files(outdir, lib):
 
     return data
 
-alignment_config = inpututils.load_config(config)
-alignment_config = alignment_config['alignment']
-
-lib = config["library_id"]
-alignment_dir = config["out_dir"]
-bams_dir = config["bams_dir"]
-
-sampleinfo = inpututils.get_sample_info(config['input_yaml'])
-laneinfo = inpututils.get_lane_info(config['input_yaml'])
-
-cellids = inpututils.get_samples(config['input_yaml'])
-fastq1_files, fastq2_files = inpututils.get_fastqs(config['input_yaml'])
-print(fastq1_files)
-
-alignment_files = get_output_files(alignment_dir, lib)
-alignment_meta = os.path.join(alignment_dir, 'metadata.yaml')
-
-bam_files_template = os.path.join(bams_dir, '{cell_id}.bam')
-bams_meta = os.path.join(bams_dir, 'metadata.yaml')
-
-lanes = sorted(set([v[1] for v in fastq1_files.keys()]))
-cell = sorted(set([v[0] for v in fastq1_files.keys()]))
-
-input_yaml_blob = os.path.join(alignment_dir, 'input.yaml')
-
-chromosomes = alignment_config["chromosomes"]
-ref_genome = alignment_config['ref_genome']
-
-basename = alignment_config['docker']['single_cell_pipeline']
-# singularity: basename
-
 rule align_reads:
     input:
         fastq1 = lambda wildcards: list([fastq1_files[(wildcards.cell_id, lane)] for lane in lanes]),
