@@ -65,7 +65,7 @@ pipeline{
            //      steps{
            //        sh 'bash tests/jenkins/count_haps/count_haps.sh singlecelltestsets $SINGLECELLTESTSETS'
            //     }
-           }
+           // }
          }
       }
     }
