@@ -21,50 +21,50 @@ pipeline{
        }
        stage('runtests'){
          parallel{
-            stage('align'){
-                steps{
-                  sh 'bash tests/jenkins/align/align.sh singlecelltestsets $SINGLECELLTESTSETS'
-                }
-           }
-            stage('hmmcopy'){
-                steps{
-                  sh 'bash tests/jenkins/hmmcopy/hmmcopy.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
+           //  stage('align'){
+           //      steps{
+           //        sh 'bash tests/jenkins/align/align.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //      }
+           // }
+           //  stage('hmmcopy'){
+           //      steps{
+           //        sh 'bash tests/jenkins/hmmcopy/hmmcopy.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
             stage('annotation'){
                 steps{
                   sh 'bash tests/jenkins/annotation/annotation.sh singlecelltestsets $SINGLECELLTESTSETS'
                }
            }
-            stage('merge_cell_bams'){
-                steps{
-                  sh 'bash tests/jenkins/merge_cell_bams/merge_cell_bams.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
-            stage('split_wgs_bam'){
-                steps{
-                  sh 'bash tests/jenkins/split_wgs_bam/split_wgs_bam.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
-            stage('variant_calling'){
-                steps{
-                  sh 'bash tests/jenkins/variant_calling/variant_calling.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
-            stage('breakpoint_calling'){
-                steps{
-                  sh 'bash tests/jenkins/breakpoint_calling/breakpoint_calling.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
-            stage('infer_haps'){
-                steps{
-                  sh 'bash tests/jenkins/infer_haps/infer_haps.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
-           }
-            stage('count_haps'){
-                steps{
-                  sh 'bash tests/jenkins/count_haps/count_haps.sh singlecelltestsets $SINGLECELLTESTSETS'
-               }
+           //  stage('merge_cell_bams'){
+           //      steps{
+           //        sh 'bash tests/jenkins/merge_cell_bams/merge_cell_bams.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
+           //  stage('split_wgs_bam'){
+           //      steps{
+           //        sh 'bash tests/jenkins/split_wgs_bam/split_wgs_bam.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
+           //  stage('variant_calling'){
+           //      steps{
+           //        sh 'bash tests/jenkins/variant_calling/variant_calling.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
+           //  stage('breakpoint_calling'){
+           //      steps{
+           //        sh 'bash tests/jenkins/breakpoint_calling/breakpoint_calling.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
+           //  stage('infer_haps'){
+           //      steps{
+           //        sh 'bash tests/jenkins/infer_haps/infer_haps.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
+           // }
+           //  stage('count_haps'){
+           //      steps{
+           //        sh 'bash tests/jenkins/count_haps/count_haps.sh singlecelltestsets $SINGLECELLTESTSETS'
+           //     }
            }
          }
       }
